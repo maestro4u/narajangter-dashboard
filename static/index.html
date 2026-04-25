@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나라장터 입찰 대시보드</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Noto Sans KR', sans-serif; }
+  .tag { display:inline-flex; align-items:center; background:#EEF2FF; color:#4F46E5; padding:2px 8px; border-radius:12px; font-size:12px; margin:2px; gap:3px; }
+  .tag.off { background:#F3F4F6; color:#9CA3AF; }
+  .tag.excl { background:#FEE2E2; color:#DC2626; }
+  .tag.excl.off { background:#F3F4F6; color:#9CA3AF; }
+  .tag-x { cursor:pointer; font-size:14px; line-height:1; opacity:0.6; }
+  .tag-x:hover { opacity:1; }
+  .loading { display:none; }
+  .loading.show { display:flex; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { background:#E0E7FF; }
+  th.sortable::after { content:' ↕'; opacity:0.3; font-size:10px; }
+  th.asc::after { content:' ↑'; opacity:1; }
+  th.desc::after { content:' ↓'; opacity:1; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-indigo-700 text-white shadow-lg sticky top-0 z-10">
+  <div class="max-w-screen-xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">🏛️</span>
+      <div>
+        <h1 class="text-base font-bold leading-tight">나라장터 입찰 대시보드</h1>
+        <p class="text-indigo-200 text-xs" id="lastUpdated">마지막 조회: —</p>
+      </div>
+    </div>
+    <button id="searchBtn" onclick="doSearch()"
+      class="bg-white text-indigo-700 font-semibold px-5 py-2 rounded-lg hover:bg-indigo-50 transition flex items-center gap-2 text-sm">
+      <span id="searchIcon">🔍</span><span id="searchTxt">검색</span>
+    </button>
+  </div>
+</header>
+
+<div class="max-w-screen-xl mx-auto px-4 py-5 flex gap-5">
+
+  <!-- Sidebar -->
+  <aside class="w-64 flex-shrink-0">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sticky top-20">
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4">🔧 검색 조건</p>
+
+      <!-- Date -->
+      <div class="mb-4">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">📅 조회 기간</p>
+        <div class="flex flex-wrap gap-1 mb-2">
+          <button onclick="setDays(1)"  class="pBtn text-xs px-2 py-1 rounded border border-gray-200 hover:border-indigo-400 hover:text-indigo-600">오늘</button>
+          <button onclick="setDays(3)"  class="pBtn text-xs px-2 py-1 rounded border border-indigo-400 text-indigo-600 bg-indigo-50">3일</button>
+          <button onclick="setDays(7)"  class="pBtn text-xs px-2 py-1 rounded border border-gray-200 hover:border-indigo-400 hover:text-indigo-600">7일</button>
+          <button onclick="setDays(14)" class="pBtn text-xs px-2 py-1 rounded border border-gray-200 hover:border-indigo-400 hover:text-indigo-600">14일</button>
+        </div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs text-gray-400 w-10 flex-shrink-0">시작일</span>
+            <input type="date" id="startDate" class="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-indigo-400 focus:outline-none">
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs text-gray-400 w-10 flex-shrink-0">종료일</span>
+            <input type="date" id="endDate" class="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-indigo-400 focus:outline-none">
+          </div>
+        </div>
+      </div>
+
+      <!-- Min Budget -->
+      <div class="mb-4">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">💰 최소 예산</p>
+        <div class="flex items-center gap-2">
+          <input type="number" id="minBudget" value="100000000" step="50000000"
+            oninput="updateBudgetLabel()"
+            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-indigo-400 focus:outline-none">
+          <span id="budgetLbl" class="text-xs text-indigo-600 font-semibold whitespace-nowrap">1억</span>
+        </div>
+      </div>
+
+      <!-- Regions -->
+      <div class="mb-4">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">🗺️ 지역 <span class="font-normal text-gray-400">(발주기관)</span></p>
+        <div id="regionWrap" class="flex flex-wrap"></div>
+        <div class="flex gap-1 mt-1.5">
+          <input id="inpRegion" type="text" placeholder="추가 후 Enter"
+            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
+            onkeydown="if(event.key==='Enter')addRegion()">
+          <button onclick="addRegion()" class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
+        </div>
+      </div>
+
+      <!-- Include -->
+      <div class="mb-4">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">✅ 포함 키워드</p>
+        <div id="includeWrap" class="flex flex-wrap mb-1.5"></div>
+        <div class="flex gap-1">
+          <input id="inpInclude" type="text" placeholder="추가 후 Enter"
+            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
+            onkeydown="if(event.key==='Enter')addKw('include')">
+          <button onclick="addKw('include')" class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
+        </div>
+      </div>
+
+      <!-- Exclude -->
+      <div class="mb-5">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">❌ 제외 키워드</p>
+        <div id="excludeWrap" class="flex flex-wrap mb-1.5"></div>
+        <div class="flex gap-1">
+          <input id="inpExclude" type="text" placeholder="추가 후 Enter"
+            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-red-300 focus:outline-none"
+            onkeydown="if(event.key==='Enter')addKw('exclude')">
+          <button onclick="addKw('exclude')" class="text-xs bg-red-50 text-red-500 border border-red-200 rounded px-2 py-1 hover:bg-red-100">+</button>
+        </div>
+      </div>
+
+      <button onclick="doSearch()"
+        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition text-sm">
+        🔍 검색 실행
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0">
+
+    <!-- Loading -->
+    <div id="loading" class="loading items-center justify-center py-24 flex-col gap-3">
+      <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full spin"></div>
+      <p class="text-gray-500 text-sm">나라장터 API 조회 중…</p>
+    </div>
+
+    <!-- Empty -->
+    <div id="emptyState" class="text-center py-24 text-gray-400">
+      <div class="text-5xl mb-3">🏛️</div>
+      <p class="text-base font-medium text-gray-500">조건을 설정하고 검색하세요</p>
+      <p class="text-sm mt-1">기본값: 최근 3일, 예산 1억 이상</p>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden">
+
+      <!-- Stats -->
+      <div class="grid grid-cols-2 gap-4 mb-5">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p class="text-xs text-gray-400 mb-1">📌 사전규격</p>
+          <p class="text-3xl font-bold text-indigo-600" id="statPre">0</p>
+          <p class="text-xs text-gray-400 mt-0.5">건 조회됨</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p class="text-xs text-gray-400 mb-1">📢 입찰공고</p>
+          <p class="text-3xl font-bold text-emerald-600" id="statBid">0</p>
+          <p class="text-xs text-gray-400 mt-0.5">건 조회됨</p>
+        </div>
+      </div>
+
+      <!-- Tab card -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="flex border-b border-gray-100">
+          <button id="tabPreBtn" onclick="switchTab('pre')"
+            class="flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600">
+            📌 사전규격 <span id="badgePre" class="ml-1 text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button id="tabBidBtn" onclick="switchTab('bid')"
+            class="flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600">
+            📢 입찰공고 <span id="badgeBid" class="ml-1 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">0</span>
+          </button>
+        </div>
+
+        <!-- Pre Table -->
+        <div id="panelPre" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-xs text-gray-500">
+              <tr>
+                <th class="px-3 py-3 text-left w-8">#</th>
+                <th class="px-3 py-3 text-left sortable" data-type="pre" data-key="prdctClsfcNoNm">사업명</th>
+                <th class="px-3 py-3 text-left sortable" data-type="pre" data-key="orderInsttNm">발주기관</th>
+                <th class="px-3 py-3 text-right sortable" data-type="pre" data-key="asignBdgtAmt">예산</th>
+                <th class="px-3 py-3 text-center sortable" data-type="pre" data-key="opninRgstClseDt">의견마감</th>
+                <th class="px-3 py-3 text-center">문서</th>
+              </tr>
+            </thead>
+            <tbody id="preBody" class="divide-y divide-gray-50"></tbody>
+          </table>
+        </div>
+
+        <!-- Bid Table -->
+        <div id="panelBid" class="overflow-x-auto hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-xs text-gray-500">
+              <tr>
+                <th class="px-3 py-3 text-left w-8">#</th>
+                <th class="px-3 py-3 text-left sortable min-w-[280px]" data-type="bid" data-key="bidNtceNm">사업명</th>
+                <th class="px-3 py-3 text-left sortable w-32" data-type="bid" data-key="ntceInsttNm">발주기관</th>
+                <th class="px-3 py-3 text-right sortable w-20" data-type="bid" data-key="asignBdgtAmt">예산</th>
+                <th class="px-3 py-3 text-center sortable w-36" data-type="bid" data-key="bidClseDt">입찰마감</th>
+                <th class="px-3 py-3 text-center w-36">낙찰방식</th>
+                <th class="px-3 py-3 text-center w-28">공고</th>
+              </tr>
+            </thead>
+            <tbody id="bidBody" class="divide-y divide-gray-50"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const S = {
+  regions: ["서울","강원","경상","대구","울산","부산","국군","공사","경기","충청","세종","대전","전라","광주","제주"],
+  include: ["개발","설계","기본","실시","공모"],
+  exclude: ["정비공사","건설사업관리","영향평가","이행평가","학교","폐기물","임차","준공검사","대책","하수관","상수관","확장","실태조사","전시공간","청소","개조사업","유지관리","지역관리","시설관리"],
+  activeRegions: new Set(),
+  preData: [], bidData: [],
+  sortKey: {pre: null, bid: null},
+  sortDir: {pre: 1, bid: 1}
+};
+
+function init() {
+  S.activeRegions = new Set(S.regions);
+  setDays(3);
+  renderRegions(); renderInclude(); renderExclude();
+  // Sort headers
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => doSort(th.dataset.type, th.dataset.key, th));
+  });
+}
+
+function setDays(n) {
+  const now = new Date();
+  const s = new Date(now); s.setDate(now.getDate() - n + 1);
+  document.getElementById('endDate').value   = now.toISOString().slice(0,10);
+  document.getElementById('startDate').value = s.toISOString().slice(0,10);
+  document.querySelectorAll('.pBtn').forEach(b => {
+    b.className = 'pBtn text-xs px-2 py-1 rounded border border-gray-200 hover:border-indigo-400 hover:text-indigo-600';
+  });
+}
+
+function updateBudgetLabel() {
+  const v = parseInt(document.getElementById('minBudget').value) || 0;
+  document.getElementById('budgetLbl').textContent =
+    v >= 100000000 ? (v/100000000).toFixed(1)+'억' :
+    v >= 10000     ? Math.round(v/10000)+'만' : v.toLocaleString()+'원';
+}
+
+function renderRegions() {
+  document.getElementById('regionWrap').innerHTML = S.regions.map(r =>
+    `<span class="tag cursor-pointer ${S.activeRegions.has(r)?'':'off'}" onclick="toggleRegion('${r}')">${r}<span class="tag-x" onclick="event.stopPropagation();removeRegion('${r}')">×</span></span>`
+  ).join('');
+}
+function toggleRegion(r) {
+  S.activeRegions.has(r) ? S.activeRegions.delete(r) : S.activeRegions.add(r);
+  renderRegions();
+}
+function removeRegion(r) {
+  S.regions = S.regions.filter(x => x !== r);
+  S.activeRegions.delete(r);
+  renderRegions();
+}
+function addRegion() {
+  const el = document.getElementById('inpRegion');
+  const v = el.value.trim();
+  if (!v) return;
+  if (!S.regions.includes(v)) {
+    S.regions.push(v);
+    S.activeRegions.add(v);
+    renderRegions();
+  }
+  el.value = '';
+}
+
+function renderInclude() {
+  document.getElementById('includeWrap').innerHTML = S.include.map(k =>
+    `<span class="tag">${k}<span class="tag-x" onclick="removeKw('include','${k}')">×</span></span>`
+  ).join('');
+}
+function renderExclude() {
+  document.getElementById('excludeWrap').innerHTML = S.exclude.map(k =>
+    `<span class="tag excl">${k}<span class="tag-x" onclick="removeKw('exclude','${k}')">×</span></span>`
+  ).join('');
+}
+function addKw(type) {
+  const el = document.getElementById(type==='include'?'inpInclude':'inpExclude');
+  const v = el.value.trim();
+  if (!v) return;
+  const arr = type==='include' ? S.include : S.exclude;
+  if (!arr.includes(v)) { arr.push(v); type==='include' ? renderInclude() : renderExclude(); }
+  el.value = '';
+}
+function removeKw(type, kw) {
+  if (type==='include') { S.include = S.include.filter(k=>k!==kw); renderInclude(); }
+  else { S.exclude = S.exclude.filter(k=>k!==kw); renderExclude(); }
+}
+
+function fmtAmt(v) {
+  const n = parseInt(v)||0;
+  if (!n) return '-';
+  if (n>=100000000) return (n/100000000).toFixed(1)+'억';
+  if (n>=10000) return Math.round(n/10000)+'만';
+  return n.toLocaleString();
+}
+function fmtDt(s) {
+  if (!s) return '-';
+  return s.replace('T',' ').slice(0,16);
+}
+
+async function doSearch() {
+  const sd = document.getElementById('startDate').value.replace(/-/g,'');
+  const ed = document.getElementById('endDate').value.replace(/-/g,'');
+  const mb = parseInt(document.getElementById('minBudget').value)||0;
+
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('searchBtn').disabled = true;
+  document.getElementById('searchIcon').textContent = '⏳';
+  document.getElementById('searchTxt').textContent = '조회 중…';
+
+  try {
+    const res = await fetch('/api/search', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        start_day: sd, end_day: ed,
+        regions: [...S.activeRegions],
+        include_kw: S.include, exclude_kw: S.exclude,
+        min_budget: mb
+      })
+    });
+    const data = await res.json();
+    S.preData = data.pre_items || [];
+    S.bidData = data.bid_items || [];
+
+    ['statPre','badgePre'].forEach(id => document.getElementById(id).textContent = data.pre_count);
+    ['statBid','badgeBid'].forEach(id => document.getElementById(id).textContent = data.bid_count);
+    document.getElementById('lastUpdated').textContent = '마지막 조회: ' + new Date().toLocaleString('ko-KR');
+
+    renderPre(); renderBid();
+    document.getElementById('results').classList.remove('hidden');
+  } catch(e) {
+    alert('오류: ' + e.message);
+    document.getElementById('emptyState').classList.remove('hidden');
+  } finally {
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('searchBtn').disabled = false;
+    document.getElementById('searchIcon').textContent = '🔍';
+    document.getElementById('searchTxt').textContent = '검색';
+  }
+}
+
+function renderPre() {
+  const tb = document.getElementById('preBody');
+  if (!S.preData.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-gray-400 text-sm">조건에 맞는 사전규격이 없습니다</td></tr>';
+    return;
+  }
+  tb.innerHTML = S.preData.map((d,i) => {
+    const docLinks = [1,2,3,4,5]
+      .filter(n => d[`specDocFileUrl${n}`])
+      .map(n => `<a href="${d[`specDocFileUrl${n}`]}" target="_blank"
+        class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded px-2 py-1 hover:bg-indigo-100 transition whitespace-nowrap">📄 규격${n}</a>`)
+      .join('');
+    return `
+    <tr class="hover:bg-indigo-50/40 transition">
+      <td class="px-3 py-3 text-xs text-gray-400">${i+1}</td>
+      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${d.prdctClsfcNoNm||'-'}</div></td>
+      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">${d.orderInsttNm||'-'}</td>
+      <td class="px-3 py-3 text-right text-sm font-bold text-indigo-600 whitespace-nowrap">${fmtAmt(d.asignBdgtAmt)}</td>
+      <td class="px-3 py-3 text-center text-xs text-gray-500 whitespace-nowrap">${fmtDt(d.opninRgstClseDt)}</td>
+      <td class="px-3 py-3">
+        <div class="flex flex-wrap gap-1">${docLinks || '<span class="text-gray-300 text-xs">—</span>'}</div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderBid() {
+  const tb = document.getElementById('bidBody');
+  if (!S.bidData.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">조건에 맞는 입찰공고가 없습니다</td></tr>';
+    return;
+  }
+  tb.innerHTML = S.bidData.map((d,i) => {
+    const method = d.sucsfbidMthdNm || '-';
+    const shortMethod = method.length > 14 ? method.slice(0,13) + '…' : method;
+    const docLinks = [1,2,3,4,5,6,7,8,9,10]
+      .filter(n => d[`ntceSpecDocUrl${n}`])
+      .map(n => {
+        const fname = d[`ntceSpecFileNm${n}`] || `문서${n}`;
+        const label = fname.length > 10 ? fname.slice(0,9) + '…' : fname;
+        return `<a href="${d[`ntceSpecDocUrl${n}`]}" target="_blank" title="${fname}"
+          class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 hover:bg-emerald-100 transition whitespace-nowrap">📄 ${label}</a>`;
+      }).join('');
+    return `
+    <tr class="hover:bg-emerald-50/40 transition">
+      <td class="px-3 py-3 text-xs text-gray-400">${i+1}</td>
+      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${d.bidNtceNm||'-'}</div></td>
+      <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">${d.ntceInsttNm||'-'}</td>
+      <td class="px-3 py-3 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">${fmtAmt(d.asignBdgtAmt)}</td>
+      <td class="px-3 py-3 text-center text-xs text-gray-500 whitespace-nowrap">${fmtDt(d.bidClseDt)}</td>
+      <td class="px-3 py-3 text-center text-xs text-gray-500" title="${method}"><span class="line-clamp-2">${shortMethod}</span></td>
+      <td class="px-3 py-3">
+        <div class="flex flex-wrap gap-1">
+          ${d.bidNtceDtlUrl ? `<a href="${d.bidNtceDtlUrl}" target="_blank" class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 hover:bg-emerald-100 transition whitespace-nowrap">🔗 공고페이지</a>` : ''}
+          ${docLinks || (!d.bidNtceDtlUrl ? '<span class="text-gray-300 text-xs">—</span>' : '')}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  const isPre = tab === 'pre';
+  document.getElementById('panelPre').classList.toggle('hidden', !isPre);
+  document.getElementById('panelBid').classList.toggle('hidden',  isPre);
+  document.getElementById('tabPreBtn').className = isPre
+    ? 'flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600'
+    : 'flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600';
+  document.getElementById('tabBidBtn').className = !isPre
+    ? 'flex-1 py-3 text-sm font-semibold text-emerald-600 border-b-2 border-emerald-500'
+    : 'flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600';
+}
+
+function doSort(type, key, thEl) {
+  if (S.sortKey[type] === key) S.sortDir[type] *= -1;
+  else { S.sortKey[type] = key; S.sortDir[type] = 1; }
+  const dir = S.sortDir[type];
+  const data = type === 'pre' ? S.preData : S.bidData;
+  data.sort((a, b) => {
+    if (key === 'asignBdgtAmt') return ((parseInt(a[key])||0) - (parseInt(b[key])||0)) * dir;
+    return (a[key]||'').localeCompare(b[key]||'', 'ko') * dir;
+  });
+  // Update header icons
+  document.querySelectorAll(`th.sortable[data-type="${type}"]`).forEach(th => {
+    th.classList.remove('asc','desc');
+  });
+  thEl.classList.add(dir === 1 ? 'asc' : 'desc');
+  type === 'pre' ? renderPre() : renderBid();
+}
+
+init();
+</script>
+</body>
+</html>
