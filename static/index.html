@@ -221,16 +221,25 @@
         <div id="bidMobileCards" class="lg:hidden divide-y divide-gray-50"></div>
         <!-- 데스크탑 테이블 -->
         <div class="hidden lg:block overflow-x-auto">
-          <table class="w-full text-sm table-fixed">
+          <table class="w-full text-sm" style="table-layout:fixed">
+            <colgroup>
+              <col style="width:2rem">
+              <col style="width:38%">
+              <col style="width:16%">
+              <col style="width:5rem">
+              <col style="width:8rem">
+              <col style="width:8rem">
+              <col style="width:7rem">
+            </colgroup>
             <thead class="bg-gray-50 text-xs text-gray-500">
               <tr>
-                <th class="px-3 py-3 text-left w-8">#</th>
-                <th class="px-3 py-3 text-left sortable w-[38%]" data-type="bid" data-key="bidNtceNm">사업명</th>
-                <th class="px-3 py-3 text-left sortable w-[16%]" data-type="bid" data-key="ntceInsttNm">발주기관</th>
-                <th class="px-3 py-3 text-right sortable w-20" data-type="bid" data-key="asignBdgtAmt">예산</th>
-                <th class="px-3 py-3 text-center sortable w-36" data-type="bid" data-key="bidClseDt">입찰마감</th>
-                <th class="px-3 py-3 text-center w-36">낙찰방식</th>
-                <th class="px-3 py-3 text-center w-28">공고</th>
+                <th class="px-3 py-3 text-left">#</th>
+                <th class="px-3 py-3 text-left sortable" data-type="bid" data-key="bidNtceNm">사업명</th>
+                <th class="px-3 py-3 text-left sortable" data-type="bid" data-key="ntceInsttNm">발주기관</th>
+                <th class="px-3 py-3 text-right sortable" data-type="bid" data-key="asignBdgtAmt">예산</th>
+                <th class="px-3 py-3 text-center sortable" data-type="bid" data-key="bidClseDt">입찰마감</th>
+                <th class="px-3 py-3 text-center">낙찰방식</th>
+                <th class="px-3 py-3 text-center">공고</th>
               </tr>
             </thead>
             <tbody id="bidBody" class="divide-y divide-gray-50"></tbody>
