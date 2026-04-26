@@ -47,8 +47,8 @@
 <div class="max-w-screen-xl mx-auto px-4 py-5 flex gap-5">
 
   <!-- Sidebar -->
-  <aside class="w-80 flex-shrink-0">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sticky top-20">
+  <aside class="w-64 flex-shrink-0">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sticky top-20 overflow-hidden">
       <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4">🔧 검색 조건</p>
 
       <!-- Date -->
@@ -85,11 +85,11 @@
       <div class="mb-4">
         <p class="text-xs font-semibold text-gray-500 mb-1.5">🗺️ 지역 <span class="font-normal text-gray-400">(발주기관)</span></p>
         <div id="regionWrap" class="flex flex-wrap"></div>
-        <div class="flex gap-1 mt-1.5">
+        <div class="flex gap-1 mt-1.5 w-full">
           <input id="inpRegion" type="text" placeholder="추가 후 Enter"
-            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
+            class="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
             onkeydown="if(event.key==='Enter')addRegion()">
-          <button onclick="addRegion()" class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
+          <button onclick="addRegion()" class="flex-shrink-0 text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
         </div>
       </div>
 
@@ -97,11 +97,11 @@
       <div class="mb-4">
         <p class="text-xs font-semibold text-gray-500 mb-1.5">✅ 포함 키워드</p>
         <div id="includeWrap" class="flex flex-wrap mb-1.5"></div>
-        <div class="flex gap-1">
+        <div class="flex gap-1 w-full">
           <input id="inpInclude" type="text" placeholder="추가 후 Enter"
-            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
+            class="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:outline-none"
             onkeydown="if(event.key==='Enter')addKw('include')">
-          <button onclick="addKw('include')" class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
+          <button onclick="addKw('include')" class="flex-shrink-0 text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100">+</button>
         </div>
       </div>
 
@@ -109,11 +109,11 @@
       <div class="mb-5">
         <p class="text-xs font-semibold text-gray-500 mb-1.5">❌ 제외 키워드</p>
         <div id="excludeWrap" class="flex flex-wrap mb-1.5"></div>
-        <div class="flex gap-1">
+        <div class="flex gap-1 w-full">
           <input id="inpExclude" type="text" placeholder="추가 후 Enter"
-            class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-red-300 focus:outline-none"
+            class="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:border-red-300 focus:outline-none"
             onkeydown="if(event.key==='Enter')addKw('exclude')">
-          <button onclick="addKw('exclude')" class="text-xs bg-red-50 text-red-500 border border-red-200 rounded px-2 py-1 hover:bg-red-100">+</button>
+          <button onclick="addKw('exclude')" class="flex-shrink-0 text-xs bg-red-50 text-red-500 border border-red-200 rounded px-2 py-1 hover:bg-red-100">+</button>
         </div>
       </div>
 
@@ -220,11 +220,45 @@ const S = {
   sortDir: {pre: 1, bid: 1}
 };
 
+// ── localStorage 저장/불러오기 ──────────────────────
+const STORAGE_KEY = 'bidDashboardSettings';
+
+function saveSettings() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      regions: S.regions,
+      activeRegions: [...S.activeRegions],
+      include: S.include,
+      exclude: S.exclude,
+      minBudget: parseInt(document.getElementById('minBudget').value) || 100000000
+    }));
+  } catch(e) {}
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (d.regions)      S.regions       = d.regions;
+    if (d.activeRegions) S.activeRegions = new Set(d.activeRegions);
+    if (d.include)      S.include       = d.include;
+    if (d.exclude)      S.exclude       = d.exclude;
+    if (d.minBudget) {
+      document.getElementById('minBudget').value = d.minBudget;
+      updateBudgetLabel();
+    }
+    return true;
+  } catch(e) { return false; }
+}
+// ────────────────────────────────────────────────────
+
 function init() {
   S.activeRegions = new Set(S.regions);
   setDays(3);
+  const hasSaved = loadSettings();          // 저장된 설정 불러오기
+  if (!hasSaved) S.activeRegions = new Set(S.regions);
   renderRegions(); renderInclude(); renderExclude();
-  // Sort headers
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => doSort(th.dataset.type, th.dataset.key, th));
   });
@@ -246,6 +280,7 @@ function updateBudgetLabel() {
     (v >= 100000000 ? (v/100000000).toFixed(1)+'억원' :
      v >= 10000     ? Math.round(v/10000)+'만원' :
      v.toLocaleString()+'원') + ' 이상';
+  saveSettings();
 }
 
 function renderRegions() {
@@ -255,12 +290,12 @@ function renderRegions() {
 }
 function toggleRegion(r) {
   S.activeRegions.has(r) ? S.activeRegions.delete(r) : S.activeRegions.add(r);
-  renderRegions();
+  renderRegions(); saveSettings();
 }
 function removeRegion(r) {
   S.regions = S.regions.filter(x => x !== r);
   S.activeRegions.delete(r);
-  renderRegions();
+  renderRegions(); saveSettings();
 }
 function addRegion() {
   const el = document.getElementById('inpRegion');
@@ -269,7 +304,7 @@ function addRegion() {
   if (!S.regions.includes(v)) {
     S.regions.push(v);
     S.activeRegions.add(v);
-    renderRegions();
+    renderRegions(); saveSettings();
   }
   el.value = '';
 }
@@ -289,12 +324,17 @@ function addKw(type) {
   const v = el.value.trim();
   if (!v) return;
   const arr = type==='include' ? S.include : S.exclude;
-  if (!arr.includes(v)) { arr.push(v); type==='include' ? renderInclude() : renderExclude(); }
+  if (!arr.includes(v)) {
+    arr.push(v);
+    type==='include' ? renderInclude() : renderExclude();
+    saveSettings();
+  }
   el.value = '';
 }
 function removeKw(type, kw) {
   if (type==='include') { S.include = S.include.filter(k=>k!==kw); renderInclude(); }
   else { S.exclude = S.exclude.filter(k=>k!==kw); renderExclude(); }
+  saveSettings();
 }
 
 function fmtAmt(v) {
