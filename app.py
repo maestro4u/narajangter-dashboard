@@ -126,6 +126,52 @@ async def get_config():
     return SearchRequest().dict()
 
 
+@app.get("/api/usage")
+async def get_railway_usage():
+    token = os.environ.get("RAILWAY_API_TOKEN")
+    project_id = "f0f4414b-4b91-4296-8cfa-020c86fe97b4"
+    free_credit = 5.0
+
+    if not token:
+        return {"available": False}
+
+    try:
+        query = """
+        {
+          estimatedUsage(
+            projectId: "%s"
+            measurements: [CPU_USAGE, MEMORY_USAGE_GB, NETWORK_TX_GB]
+          ) {
+            measurement
+            estimatedValue
+          }
+        }
+        """ % project_id
+
+        resp = requests.post(
+            "https://backboard.railway.app/graphql/v2",
+            json={"query": query},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=10
+        )
+        data = resp.json()
+        items = data.get("data", {}).get("estimatedUsage", [])
+
+        # Railway 단가 (per unit)
+        rates = {"CPU_USAGE": 0.000463, "MEMORY_USAGE_GB": 0.000231, "NETWORK_TX_GB": 0.10}
+        total_cost = sum(rates.get(i["measurement"], 0) * i["estimatedValue"] for i in items)
+
+        return {
+            "available": True,
+            "used": round(total_cost, 4),
+            "free_credit": free_credit,
+            "remaining": round(free_credit - total_cost, 4),
+            "remaining_pct": round(max(0, (free_credit - total_cost) / free_credit * 100), 1)
+        }
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
