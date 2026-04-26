@@ -249,9 +249,68 @@ const S = {
   exclude: ["정비공사","건설사업관리","영향평가","이행평가","학교","폐기물","임차","준공검사","대책","하수관","상수관","확장","실태조사","전시공간","청소","개조사업","유지관리","지역관리","시설관리"],
   activeRegions: new Set(),
   preData: [], bidData: [],
+  activeTab: 'pre',
   sortKey: {pre: null, bid: null},
   sortDir: {pre: 1, bid: 1}
 };
+
+// ── sessionStorage: 검색 결과 보존 + 스크롤 복원 ────
+const SESSION_KEY = 'bidDashboardSession';
+
+function saveSession() {
+  if (!S.preData.length && !S.bidData.length) return;
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      preData: S.preData,
+      bidData: S.bidData,
+      activeTab: S.activeTab,
+      lastUpdated: document.getElementById('lastUpdated').textContent
+    }));
+  } catch(e) {}
+}
+
+function saveScroll() {
+  sessionStorage.setItem('scrollY', Math.round(window.scrollY));
+}
+
+function restoreSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d.preData && !d.bidData) return false;
+
+    S.preData = d.preData || [];
+    S.bidData = d.bidData || [];
+    S.activeTab = d.activeTab || 'pre';
+
+    ['statPre','badgePre'].forEach(id =>
+      document.getElementById(id).textContent = S.preData.length);
+    ['statBid','badgeBid'].forEach(id =>
+      document.getElementById(id).textContent = S.bidData.length);
+
+    const lu = d.lastUpdated || '';
+    document.getElementById('lastUpdated').textContent = lu;
+    document.getElementById('lastUpdatedMobile').textContent = lu;
+
+    renderPre(); renderBid();
+    if (S.activeTab === 'bid') switchTab('bid');
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+
+    // 스크롤 위치 복원 (DOM 렌더링 완료 후)
+    const sy = parseInt(sessionStorage.getItem('scrollY') || '0');
+    if (sy > 0) {
+      sessionStorage.removeItem('scrollY');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.scrollTo({ top: sy, behavior: 'instant' });
+      }));
+    }
+    return true;
+  } catch(e) { return false; }
+}
+// ────────────────────────────────────────────────────
 
 // ── localStorage 저장/불러오기 ──────────────────────
 const STORAGE_KEY = 'bidDashboardSettings';
@@ -305,7 +364,7 @@ function renderPreCards() {
   }
   c.innerHTML = S.preData.map((d, i) => {
     const docs = [1,2,3,4,5].filter(n => d[`specDocFileUrl${n}`])
-      .map(n => `<a href="${d[`specDocFileUrl${n}`]}" target="_blank"
+      .map(n => `<a href="${d[`specDocFileUrl${n}`]}" target="_blank" rel="noopener" onclick="saveScroll()"
         class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded px-2 py-1 whitespace-nowrap">📄 규격${n}</a>`)
       .join('');
     return `
@@ -336,11 +395,11 @@ function renderBidCards() {
       .map(n => {
         const fname = d[`ntceSpecFileNm${n}`] || `문서${n}`;
         const label = fname.length > 10 ? fname.slice(0,9)+'…' : fname;
-        return `<a href="${d[`ntceSpecDocUrl${n}`]}" target="_blank" title="${fname}"
+        return `<a href="${d[`ntceSpecDocUrl${n}`]}" target="_blank" rel="noopener" title="${fname}" onclick="saveScroll()"
           class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 whitespace-nowrap">📄 ${label}</a>`;
       }).join('');
     const bidLink = d.bidNtceDtlUrl
-      ? `<a href="${d.bidNtceDtlUrl}" target="_blank"
+      ? `<a href="${d.bidNtceDtlUrl}" target="_blank" rel="noopener" onclick="saveScroll()"
           class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 whitespace-nowrap">🔗 공고페이지</a>`
       : '';
     return `
@@ -393,6 +452,7 @@ function init() {
   if (window.innerWidth < 1024) {
     document.getElementById('filterPanel').style.display = 'none';
   }
+  restoreSession();  // 뒤로가기 복원
   loadCredit();
 }
 
@@ -515,6 +575,7 @@ async function doSearch() {
     document.getElementById('lastUpdatedMobile').textContent = now;
 
     renderPre(); renderBid();
+    saveSession();
     document.getElementById('results').classList.remove('hidden');
   } catch(e) {
     alert('오류: ' + e.message);
@@ -537,7 +598,7 @@ function renderPre() {
   tb.innerHTML = S.preData.map((d,i) => {
     const docLinks = [1,2,3,4,5]
       .filter(n => d[`specDocFileUrl${n}`])
-      .map(n => `<a href="${d[`specDocFileUrl${n}`]}" target="_blank"
+      .map(n => `<a href="${d[`specDocFileUrl${n}`]}" target="_blank" rel="noopener" onclick="saveScroll()"
         class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded px-2 py-1 hover:bg-indigo-100 transition whitespace-nowrap">📄 규격${n}</a>`)
       .join('');
     return `
@@ -569,7 +630,7 @@ function renderBid() {
       .map(n => {
         const fname = d[`ntceSpecFileNm${n}`] || `문서${n}`;
         const label = fname.length > 10 ? fname.slice(0,9) + '…' : fname;
-        return `<a href="${d[`ntceSpecDocUrl${n}`]}" target="_blank" title="${fname}"
+        return `<a href="${d[`ntceSpecDocUrl${n}`]}" target="_blank" rel="noopener" title="${fname}" onclick="saveScroll()"
           class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 hover:bg-emerald-100 transition whitespace-nowrap">📄 ${label}</a>`;
       }).join('');
     return `
@@ -582,7 +643,7 @@ function renderBid() {
       <td class="px-3 py-3 text-center text-xs text-gray-500" title="${method}"><span class="line-clamp-2">${shortMethod}</span></td>
       <td class="px-3 py-3">
         <div class="flex flex-wrap gap-1">
-          ${d.bidNtceDtlUrl ? `<a href="${d.bidNtceDtlUrl}" target="_blank" class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 hover:bg-emerald-100 transition whitespace-nowrap">🔗 공고페이지</a>` : ''}
+          ${d.bidNtceDtlUrl ? `<a href="${d.bidNtceDtlUrl}" target="_blank" rel="noopener" onclick="saveScroll()" class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 hover:bg-emerald-100 transition whitespace-nowrap">🔗 공고페이지</a>` : ''}
           ${docLinks || (!d.bidNtceDtlUrl ? '<span class="text-gray-300 text-xs">—</span>' : '')}
         </div>
       </td>
@@ -591,6 +652,8 @@ function renderBid() {
 }
 
 function switchTab(tab) {
+  S.activeTab = tab;
+  saveSession();
   const isPre = tab === 'pre';
   document.getElementById('panelPre').classList.toggle('hidden', !isPre);
   document.getElementById('panelBid').classList.toggle('hidden',  isPre);
