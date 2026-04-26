@@ -3,6 +3,9 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+from dotenv import load_dotenv
+load_dotenv()  # 로컬 .env 파일에서 환경변수 로드
+
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
