@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>나라장터 입찰 대시보드(도시설계부용)</title>
+<title>나라장터 입찰 대시보드</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -33,7 +33,7 @@
     <div class="flex items-center gap-2 lg:gap-3">
       <span class="text-xl lg:text-2xl">🏛️</span>
       <div>
-        <h1 class="text-sm lg:text-base font-bold leading-tight">나라장터 입찰 대시보드(도시설계부용)</h1>
+        <h1 id="dashTitle" class="text-sm lg:text-base font-bold leading-tight">나라장터 입찰 대시보드</h1>
         <p class="text-indigo-200 text-xs hidden lg:block" id="lastUpdated">마지막 조회: —</p>
       </div>
     </div>
@@ -252,6 +252,21 @@
 </div>
 
 <script>
+const PRESETS = {
+  urbandesign: {
+    title: '나라장터 입찰 대시보드 (도시설계부용)',
+    regions: ["서울","강원","경상","대구","울산","부산","국군","공사","경기","충청","세종","대전","전라","광주","제주"],
+    include: ["개발","설계","기본","실시","공모"],
+    exclude: ["정비공사","건설사업관리","영향평가","이행평가","학교","폐기물","임차","준공검사","대책","하수관","상수관","확장","실태조사","전시공간","청소","개조사업","유지관리","지역관리","시설관리"]
+  },
+  landscape: {
+    title: '나라장터 입찰 대시보드 (조경레져부용)',
+    regions: ["서울","경기","강원","충청","충북","충남","전라","전북","전남","경상","경북","경남","부산","대구","광주","인천","대전","울산","공사","산림청","토지","주택","대한","세종"],
+    include: ["공원","휴양","조경","정원","숲","파크","마스터플랜","테마","관광","경관","문화","역사","체육","녹지","수목원","가로수","골프","생태","에코","미세먼지","훼손지","도시림","그린","반려","유원지","탄소","스마트","쉼터","타당성","생태축","물류"],
+    exclude: ["건설사업관리","감리","세탁","리모델링"]
+  }
+};
+
 const S = {
   regions: ["서울","강원","경상","대구","울산","부산","국군","공사","경기","충청","세종","대전","전라","광주","제주"],
   include: ["개발","설계","기본","실시","공모"],
@@ -322,7 +337,7 @@ function restoreSession() {
 // ────────────────────────────────────────────────────
 
 // ── localStorage 저장/불러오기 ──────────────────────
-const STORAGE_KEY = 'bidDashboardSettings';
+let STORAGE_KEY = 'bidDashboardSettings';
 
 function saveSettings() {
   try {
@@ -449,6 +464,18 @@ async function loadCredit() {
 }
 
 function init() {
+  // 부서 프리셋 적용 (URL ?dept= 파라미터)
+  const dept = new URLSearchParams(location.search).get('dept') || '';
+  const preset = PRESETS[dept];
+  if (preset) {
+    S.regions = [...preset.regions];
+    S.include = [...preset.include];
+    S.exclude = [...preset.exclude];
+    document.title = preset.title;
+    document.getElementById('dashTitle').textContent = preset.title;
+    STORAGE_KEY = 'bidDashboardSettings_' + dept;
+  }
+
   S.activeRegions = new Set(S.regions);
   setDays(3);
   const hasSaved = loadSettings();
