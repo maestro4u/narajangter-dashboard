@@ -537,11 +537,15 @@ function init() {
   }
 }
 
+function localYMD(d) {
+  // 로컬(한국) 날짜 기준 YYYY-MM-DD. toISOString()은 UTC라 오전에 하루 밀리는 버그가 있어 사용하지 않음.
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function setDays(n) {
   const now = new Date();
   const s = new Date(now); s.setDate(now.getDate() - n + 1);
-  document.getElementById('endDate').value   = now.toISOString().slice(0,10);
-  document.getElementById('startDate').value = s.toISOString().slice(0,10);
+  document.getElementById('endDate').value   = localYMD(now);
+  document.getElementById('startDate').value = localYMD(s);
   document.querySelectorAll('.pBtn').forEach(b => {
     b.className = 'pBtn text-xs px-2 py-1 rounded border border-gray-200 hover:border-indigo-400 hover:text-indigo-600';
   });
@@ -735,7 +739,7 @@ function exportSaved() {
   const blob = new Blob([JSON.stringify(S.saved, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = '나라장터_보관함_' + new Date().toISOString().slice(0,10) + '.json';
+  a.download = '나라장터_보관함_' + localYMD(new Date()) + '.json';
   document.body.appendChild(a); a.click(); a.remove();
 }
 function importSaved(input) {
@@ -792,7 +796,7 @@ async function exportExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([PRE_HEADERS, ...pre.map(preRow)]), 'PreResult');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([BID_HEADERS, ...bid.map(bidRow)]), 'BidResult');
-  XLSX.writeFile(wb, '사전규격_및_입찰공고_검토_파일_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  XLSX.writeFile(wb, '사전규격_및_입찰공고_검토_파일_' + localYMD(new Date()) + '.xlsx');
 }
 // ────────────────────────────────────────────────────
 
