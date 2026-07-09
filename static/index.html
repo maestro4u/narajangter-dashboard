@@ -259,7 +259,8 @@
           <div class="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50/60 border-b border-amber-100">
             <p class="text-xs text-gray-500">체크한 사업이 <b>이 브라우저</b>에 저장됩니다 (재부팅해도 유지)</p>
             <div class="flex gap-1 flex-shrink-0">
-              <button onclick="exportSaved()" class="text-xs border border-amber-200 text-amber-700 rounded px-2 py-1 hover:bg-amber-100 whitespace-nowrap">⬇ 내보내기</button>
+              <button onclick="exportExcel()" class="text-xs border border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold rounded px-2 py-1 hover:bg-emerald-100 whitespace-nowrap">📊 엑셀 다운로드</button>
+              <button onclick="exportSaved()" title="JSON 백업(복원용)" class="text-xs border border-amber-200 text-amber-700 rounded px-2 py-1 hover:bg-amber-100 whitespace-nowrap">⬇ 백업</button>
               <label class="text-xs border border-amber-200 text-amber-700 rounded px-2 py-1 hover:bg-amber-100 cursor-pointer whitespace-nowrap">⬆ 불러오기<input type="file" accept="application/json" onchange="importSaved(this)" class="hidden"></label>
             </div>
           </div>
@@ -776,6 +777,46 @@ function importSaved(input) {
     input.value = '';
   };
   r.readAsText(f);
+}
+
+// ── 엑셀(xlsx) 내보내기: PreResult / BidResult 시트 ──
+let _xlsxPromise;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxPromise) return _xlsxPromise;
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/xlsx.full.min.js';
+    s.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('엑셀 모듈 초기화 실패'));
+    s.onerror = () => reject(new Error('엑셀 라이브러리를 불러오지 못했습니다. (네트워크 확인)'));
+    document.head.appendChild(s);
+  });
+  return _xlsxPromise;
+}
+const PRE_HEADERS = ['연번','업무구분명','발주기관명','사업명','접수일시','등록일시','의견등록\n마감일시','규격문서파일URL1','규격문서파일URL2','규격문서파일URL3','규격문서파일URL4','규격문서파일URL5','가격\n(억원)','입찰방법','검토 내용','컨소','평가방법','유사실적','PQ 검토 결과','발주시기'];
+const BID_HEADERS = ['연번','용역구분명','입찰공고명','공고기관명','배정예산금액','입찰개시일시','입찰마감일시','입찰공고상세URL','계약체결\n방법','입찰방법','입찰조건','컨소','검토 내용','유사살적','평가방법','검토결과'];
+function preRow(rec, i) {
+  const d = rec.item, amt = parseInt(d.asignBdgtAmt) || 0;
+  return [ i+1, d.bsnsDivNm||'', d.orderInsttNm||'', d.prdctClsfcNoNm||'', d.rcptDt||'', d.rgstDt||'', d.opninRgstClseDt||'',
+    d.specDocFileUrl1||'', d.specDocFileUrl2||'', d.specDocFileUrl3||'', d.specDocFileUrl4||'', d.specDocFileUrl5||'',
+    amt ? Math.round(amt/1e6)/100 : '', '', rec.memo||'', '', '', '', '', '' ];
+}
+function bidRow(rec, i) {
+  const d = rec.item;
+  return [ i+1, d.srvceDivNm||'', d.bidNtceNm||'', d.ntceInsttNm||'', parseInt(d.asignBdgtAmt)||'', d.bidBeginDt||'', d.bidClseDt||'', d.bidNtceDtlUrl||'',
+    d.cntrctCnclsMthdNm||'', d.bidMethdNm||'', '', '', rec.memo||'', '', '', '' ];
+}
+async function exportExcel() {
+  const entries = Object.values(S.saved);
+  if (!entries.length) { alert('보관함이 비어 있습니다. 먼저 ☆로 담아주세요.'); return; }
+  let XLSX;
+  try { XLSX = await loadXLSX(); } catch (e) { alert(e.message); return; }
+  const pre = entries.filter(r => r.source === 'pre').sort((a,b) => (a.savedAt||'').localeCompare(b.savedAt||''));
+  const bid = entries.filter(r => r.source === 'bid').sort((a,b) => (a.savedAt||'').localeCompare(b.savedAt||''));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([PRE_HEADERS, ...pre.map(preRow)]), 'PreResult');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([BID_HEADERS, ...bid.map(bidRow)]), 'BidResult');
+  XLSX.writeFile(wb, '사전규격_및_입찰공고_검토_파일_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 // ────────────────────────────────────────────────────
 
