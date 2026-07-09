@@ -98,9 +98,12 @@
       <!-- Min Budget -->
       <div class="mb-4">
         <p class="text-xs font-semibold text-gray-500 mb-1.5">💰 최소 예산</p>
-        <input type="number" id="minBudget" value="100000000" step="50000000"
-          oninput="updateBudgetLabel()"
-          class="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-indigo-400 focus:outline-none">
+        <div class="relative">
+          <input type="text" inputmode="numeric" id="minBudget" value="100,000,000"
+            oninput="formatBudgetInput()"
+            class="w-full text-xs border border-gray-200 rounded px-2 py-1.5 pr-7 focus:border-indigo-400 focus:outline-none">
+          <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">원</span>
+        </div>
         <p class="text-xs text-indigo-600 font-semibold mt-1" id="budgetLbl">1억원 이상</p>
       </div>
 
@@ -358,7 +361,7 @@ function saveSettings() {
       activeRegions: [...S.activeRegions],
       include: S.include,
       exclude: S.exclude,
-      minBudget: parseInt(document.getElementById('minBudget').value) || 100000000
+      minBudget: budgetRaw() || 100000000
     }));
   } catch(e) {}
 }
@@ -373,7 +376,7 @@ function loadSettings() {
     if (d.include)      S.include       = d.include;
     if (d.exclude)      S.exclude       = d.exclude;
     if (d.minBudget) {
-      document.getElementById('minBudget').value = d.minBudget;
+      document.getElementById('minBudget').value = Number(d.minBudget).toLocaleString('en-US');
       updateBudgetLabel();
     }
     return true;
@@ -541,8 +544,25 @@ function setDays(n) {
   });
 }
 
+function budgetRaw() {
+  return parseInt((document.getElementById('minBudget').value || '').replace(/[^\d]/g, '')) || 0;
+}
+function formatBudgetInput() {
+  const el = document.getElementById('minBudget');
+  const digitsBefore = (el.value.slice(0, el.selectionStart || 0).match(/\d/g) || []).length;
+  const n = budgetRaw();
+  el.value = n ? n.toLocaleString('en-US') : '';
+  // 캐럿 위치 복원 (앞쪽 숫자 개수 기준)
+  let pos = 0, seen = 0;
+  while (pos < el.value.length && seen < digitsBefore) {
+    if (/\d/.test(el.value[pos])) seen++;
+    pos++;
+  }
+  try { el.setSelectionRange(pos, pos); } catch (e) {}
+  updateBudgetLabel();
+}
 function updateBudgetLabel() {
-  const v = parseInt(document.getElementById('minBudget').value) || 0;
+  const v = budgetRaw();
   document.getElementById('budgetLbl').textContent =
     (v >= 100000000 ? (v/100000000).toFixed(1)+'억원' :
      v >= 10000     ? Math.round(v/10000)+'만원' :
@@ -619,7 +639,7 @@ function fmtDt(s) {
 async function doSearch() {
   const sd = document.getElementById('startDate').value.replace(/-/g,'');
   const ed = document.getElementById('endDate').value.replace(/-/g,'');
-  const mb = parseInt(document.getElementById('minBudget').value)||0;
+  const mb = budgetRaw();
 
   document.getElementById('loading').classList.add('show');
   document.getElementById('emptyState').classList.add('hidden');
