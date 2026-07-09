@@ -477,11 +477,9 @@ function renderBidCards() {
 }
 // ────────────────────────────────────────────────────
 
-// ── 나라장터 공공데이터 API 직접 호출 (백엔드 불필요) ──
-// data.go.kr 이 HTTPS + CORS(*) 를 지원하므로 브라우저에서 직접 조회한다.
-const G2B_KEY = "***REMOVED***";
-const PRE_URL = "https://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServcPPSSrch";
-const BID_URL = "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch";
+// ── 나라장터 조회: Cloudflare Worker 프록시 경유 ──
+// API 키는 Worker Secret에만 보관되어 클라이언트에 노출되지 않는다.
+const PROXY_URL = "https://narajangter-proxy.maestro4u.workers.dev";
 
 function passFilter(agency, title, budget, regions, includeKw, excludeKw, minBudget) {
   const a = agency || '', t = title || '';
@@ -494,34 +492,12 @@ function passFilter(agency, title, budget, regions, includeKw, excludeKw, minBud
       && amt >= minBudget;
 }
 
-async function fetchAllPages(baseUrl, startDay, endDay) {
-  const baseParams = {
-    numOfRows: '100', pageNo: '1', ServiceKey: G2B_KEY,
-    inqryDiv: '1', inqryBgnDt: `${startDay}0000`, inqryEndDt: `${endDay}2359`, type: 'json'
-  };
-  const build = (extra) => baseUrl + '?' + new URLSearchParams({ ...baseParams, ...extra }).toString();
-
-  // 1) totalCount 파악 (1건만 요청)
-  const first = await fetch(build({ numOfRows: '1' }));
-  if (!first.ok) throw new Error('API ' + first.status);
-  const total = (await first.json())?.response?.body?.totalCount || 0;
-  if (!total) return [];
-
-  // 2) 전체 페이지 병렬 수집 (100건씩, 동시 6개 제한)
-  const pages = Math.ceil(total / 100);
-  const results = new Array(pages);
-  let idx = 0;
-  async function worker() {
-    while (idx < pages) {
-      const my = idx++;
-      const r = await fetch(build({ pageNo: String(my + 1) }));
-      if (!r.ok) throw new Error('API ' + r.status);
-      const items = (await r.json())?.response?.body?.items;
-      results[my] = Array.isArray(items) ? items : (items ? [items] : []);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(6, pages) }, worker));
-  return results.flat();
+async function fetchAllPages(type, startDay, endDay) {
+  // Worker 프록시가 전체 페이지네이션을 서버에서 수행하고 합쳐서 반환한다.
+  const res = await fetch(`${PROXY_URL}/?type=${type}&start=${startDay}&end=${endDay}`);
+  if (!res.ok) throw new Error('조회 실패 ' + res.status);
+  const data = await res.json();
+  return data.items || [];
 }
 
 function init() {
@@ -836,14 +812,14 @@ async function doSearch() {
     const regions = [...S.activeRegions];
 
     // 사전규격: 기술용역만 + 필터
-    const preRaw = await fetchAllPages(PRE_URL, sd, ed);
+    const preRaw = await fetchAllPages('pre', sd, ed);
     S.preData = preRaw.filter(item =>
       item.bsnsDivNm === '기술용역' &&
       passFilter(item.orderInsttNm, item.prdctClsfcNoNm, item.asignBdgtAmt,
                  regions, S.include, S.exclude, mb));
 
     // 입찰공고: 기술용역만 + 필터
-    const bidRaw = await fetchAllPages(BID_URL, sd, ed);
+    const bidRaw = await fetchAllPages('bid', sd, ed);
     S.bidData = bidRaw.filter(item =>
       item.srvceDivNm === '기술용역' &&
       passFilter(item.ntceInsttNm, item.bidNtceNm, item.asignBdgtAmt,
