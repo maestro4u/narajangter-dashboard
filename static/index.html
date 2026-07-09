@@ -456,23 +456,51 @@ function renderBidCards() {
 }
 // ────────────────────────────────────────────────────
 
-async function loadCredit() {
-  try {
-    const res = await fetch('/api/usage');
-    const d = await res.json();
-    if (!d.available) return;
+// ── 나라장터 공공데이터 API 직접 호출 (백엔드 불필요) ──
+// data.go.kr 이 HTTPS + CORS(*) 를 지원하므로 브라우저에서 직접 조회한다.
+const G2B_KEY = "***REMOVED***";
+const PRE_URL = "https://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServcPPSSrch";
+const BID_URL = "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch";
 
-    const box = document.getElementById('creditBox');
-    const bar = document.getElementById('creditBar');
-    const txt = document.getElementById('creditTxt');
+function passFilter(agency, title, budget, regions, includeKw, excludeKw, minBudget) {
+  const a = agency || '', t = title || '';
+  let amt = 0;
+  const parsed = parseFloat(budget);
+  if (!isNaN(parsed)) amt = Math.trunc(parsed);
+  return regions.some(r => a.includes(r))
+      && includeKw.some(k => t.includes(k))
+      && !excludeKw.some(k => t.includes(k))
+      && amt >= minBudget;
+}
 
-    box.classList.remove('hidden');
-    txt.textContent = `$${d.remaining.toFixed(2)} 남음`;
-    bar.style.width = d.remaining_pct + '%';
-    bar.className = 'h-full rounded-full transition-all ' +
-      (d.remaining_pct > 50 ? 'bg-green-400' :
-       d.remaining_pct > 20 ? 'bg-yellow-400' : 'bg-red-400');
-  } catch(e) {}
+async function fetchAllPages(baseUrl, startDay, endDay) {
+  const baseParams = {
+    numOfRows: '100', pageNo: '1', ServiceKey: G2B_KEY,
+    inqryDiv: '1', inqryBgnDt: `${startDay}0000`, inqryEndDt: `${endDay}2359`, type: 'json'
+  };
+  const build = (extra) => baseUrl + '?' + new URLSearchParams({ ...baseParams, ...extra }).toString();
+
+  // 1) totalCount 파악 (1건만 요청)
+  const first = await fetch(build({ numOfRows: '1' }));
+  if (!first.ok) throw new Error('API ' + first.status);
+  const total = (await first.json())?.response?.body?.totalCount || 0;
+  if (!total) return [];
+
+  // 2) 전체 페이지 병렬 수집 (100건씩, 동시 6개 제한)
+  const pages = Math.ceil(total / 100);
+  const results = new Array(pages);
+  let idx = 0;
+  async function worker() {
+    while (idx < pages) {
+      const my = idx++;
+      const r = await fetch(build({ pageNo: String(my + 1) }));
+      if (!r.ok) throw new Error('API ' + r.status);
+      const items = (await r.json())?.response?.body?.items;
+      results[my] = Array.isArray(items) ? items : (items ? [items] : []);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, pages) }, worker));
+  return results.flat();
 }
 
 function init() {
@@ -501,7 +529,6 @@ function init() {
     document.getElementById('filterPanel').style.display = 'none';
   }
   restoreSession();  // 뒤로가기 복원
-  loadCredit();
 }
 
 function setDays(n) {
@@ -602,22 +629,24 @@ async function doSearch() {
   document.getElementById('searchTxt').textContent = '조회 중…';
 
   try {
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        start_day: sd, end_day: ed,
-        regions: [...S.activeRegions],
-        include_kw: S.include, exclude_kw: S.exclude,
-        min_budget: mb
-      })
-    });
-    const data = await res.json();
-    S.preData = data.pre_items || [];
-    S.bidData = data.bid_items || [];
+    const regions = [...S.activeRegions];
 
-    ['statPre','badgePre'].forEach(id => document.getElementById(id).textContent = data.pre_count);
-    ['statBid','badgeBid'].forEach(id => document.getElementById(id).textContent = data.bid_count);
+    // 사전규격: 기술용역만 + 필터
+    const preRaw = await fetchAllPages(PRE_URL, sd, ed);
+    S.preData = preRaw.filter(item =>
+      item.bsnsDivNm === '기술용역' &&
+      passFilter(item.orderInsttNm, item.prdctClsfcNoNm, item.asignBdgtAmt,
+                 regions, S.include, S.exclude, mb));
+
+    // 입찰공고: 기술용역만 + 필터
+    const bidRaw = await fetchAllPages(BID_URL, sd, ed);
+    S.bidData = bidRaw.filter(item =>
+      item.srvceDivNm === '기술용역' &&
+      passFilter(item.ntceInsttNm, item.bidNtceNm, item.asignBdgtAmt,
+                 regions, S.include, S.exclude, mb));
+
+    ['statPre','badgePre'].forEach(id => document.getElementById(id).textContent = S.preData.length);
+    ['statBid','badgeBid'].forEach(id => document.getElementById(id).textContent = S.bidData.length);
     const now = '마지막 조회: ' + new Date().toLocaleString('ko-KR');
     document.getElementById('lastUpdated').textContent = now;
     document.getElementById('lastUpdatedMobile').textContent = now;

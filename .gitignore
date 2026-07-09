@@ -5,3 +5,8 @@ __pycache__/
 .env
 venv/
 .DS_Store
+.vercel
+
+# 내부 문서(라이브 토큰 포함) — 공개 저장소에 올리지 않음
+HANDOFF.md
+PROJECT_GUIDE.md
