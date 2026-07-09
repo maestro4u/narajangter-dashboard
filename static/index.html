@@ -194,6 +194,10 @@
             class="flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600">
             📢 입찰공고 <span id="badgeBid" class="ml-1 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">0</span>
           </button>
+          <button id="tabSavedBtn" onclick="switchTab('saved')"
+            class="flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600">
+            ⭐ 내 보관함 <span id="badgeSaved" class="ml-1 text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
         </div>
 
         <!-- Pre Panel -->
@@ -249,6 +253,18 @@
           </table>
         </div>
         </div><!-- /panelBid -->
+
+        <!-- Saved Panel -->
+        <div id="panelSaved" class="hidden">
+          <div class="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50/60 border-b border-amber-100">
+            <p class="text-xs text-gray-500">체크한 사업이 <b>이 브라우저</b>에 저장됩니다 (재부팅해도 유지)</p>
+            <div class="flex gap-1 flex-shrink-0">
+              <button onclick="exportSaved()" class="text-xs border border-amber-200 text-amber-700 rounded px-2 py-1 hover:bg-amber-100 whitespace-nowrap">⬇ 내보내기</button>
+              <label class="text-xs border border-amber-200 text-amber-700 rounded px-2 py-1 hover:bg-amber-100 cursor-pointer whitespace-nowrap">⬆ 불러오기<input type="file" accept="application/json" onchange="importSaved(this)" class="hidden"></label>
+            </div>
+          </div>
+          <div id="savedList" class="divide-y divide-gray-50"></div>
+        </div><!-- /panelSaved -->
       </div>
     </div>
   </main>
@@ -288,6 +304,7 @@ const S = {
   exclude: ["정비공사","건설사업관리","영향평가","이행평가","학교","폐기물","임차","준공검사","대책","하수관","상수관","확장","실태조사","전시공간","청소","개조사업","유지관리","지역관리","시설관리"],
   activeRegions: new Set(),
   preData: [], bidData: [],
+  saved: {},
   activeTab: 'pre',
   sortKey: {pre: null, bid: null},
   sortDir: {pre: 1, bid: 1}
@@ -333,7 +350,7 @@ function restoreSession() {
     document.getElementById('lastUpdatedMobile').textContent = lu;
 
     renderPre(); renderBid();
-    if (S.activeTab === 'bid') switchTab('bid');
+    if (S.activeTab !== 'pre') switchTab(S.activeTab);
 
     document.getElementById('results').classList.remove('hidden');
     document.getElementById('emptyState').classList.add('hidden');
@@ -408,7 +425,7 @@ function renderPreCards() {
       .join('');
     return `
     <div class="p-3 hover:bg-indigo-50/30 transition">
-      <p class="text-xs text-gray-400 mb-1">${i+1}</p>
+      <div class="flex justify-between items-start mb-1"><span class="text-xs text-gray-400">${i+1}</span>${starHTML('pre',i,d,'text-lg')}</div>
       <p class="font-semibold text-gray-800 text-sm leading-snug mb-2">${d.prdctClsfcNoNm||'-'}</p>
       <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mb-2">
         <span>🏢 ${d.orderInsttNm||'-'}</span>
@@ -443,7 +460,7 @@ function renderBidCards() {
       : '';
     return `
     <div class="p-3 hover:bg-emerald-50/30 transition">
-      <p class="text-xs text-gray-400 mb-1">${i+1}</p>
+      <div class="flex justify-between items-start mb-1"><span class="text-xs text-gray-400">${i+1}</span>${starHTML('bid',i,d,'text-lg')}</div>
       <p class="font-semibold text-gray-800 text-sm leading-snug mb-2">${d.bidNtceNm||'-'}</p>
       <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mb-1">
         <span>🏢 ${d.ntceInsttNm||'-'}</span>
@@ -531,7 +548,16 @@ function init() {
   if (window.innerWidth < 1024) {
     document.getElementById('filterPanel').style.display = 'none';
   }
-  restoreSession();  // 뒤로가기 복원
+  loadSaved();
+  updateSavedBadge();
+  const restored = restoreSession();  // 뒤로가기 복원
+  // 검색 복원이 없고 보관함에 저장분이 있으면 결과영역 열고 보관함 탭 표시
+  if (!restored && Object.keys(S.saved).length) {
+    renderPre(); renderBid();
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    switchTab('saved');
+  }
 }
 
 function setDays(n) {
@@ -636,6 +662,123 @@ function fmtDt(s) {
   return s.replace('T',' ').slice(0,16);
 }
 
+// ── 내 보관함 (localStorage, 개인별·브라우저 저장) ──────
+const SAVED_KEY = 'bidDashboardSaved_v1';
+
+function loadSaved() {
+  try { S.saved = JSON.parse(localStorage.getItem(SAVED_KEY)) || {}; }
+  catch (e) { S.saved = {}; }
+}
+function persistSaved() {
+  try { localStorage.setItem(SAVED_KEY, JSON.stringify(S.saved)); } catch (e) {}
+}
+function itemKey(source, d) {
+  if (source === 'pre') return 'pre:' + (d.bfSpecRgstNo || d.refNo || d.prdctClsfcNoNm || '');
+  return 'bid:' + (d.bidNtceNo ? d.bidNtceNo + '-' + (d.bidNtceOrd || '') : (d.bidNtceDtlUrl || d.bidNtceNm || ''));
+}
+function isSaved(source, d) { return !!S.saved[itemKey(source, d)]; }
+function updateSavedBadge() {
+  document.getElementById('badgeSaved').textContent = Object.keys(S.saved).length;
+}
+function starHTML(source, i, d, cls) {
+  const on = isSaved(source, d);
+  return `<button onclick="event.stopPropagation();toggleSaveIdx('${source}',${i})" title="${on ? '보관 해제' : '보관함에 저장'}" class="${on ? 'text-amber-400' : 'text-gray-300'} hover:text-amber-400 transition leading-none ${cls || 'mr-1 align-middle'}">${on ? '★' : '☆'}</button>`;
+}
+function toggleSaveIdx(source, i) {
+  const d = source === 'pre' ? S.preData[i] : S.bidData[i];
+  if (!d) return;
+  const key = itemKey(source, d);
+  if (S.saved[key]) delete S.saved[key];
+  else S.saved[key] = { source, savedAt: new Date().toISOString(), memo: '', item: d };
+  persistSaved(); updateSavedBadge();
+  source === 'pre' ? renderPre() : renderBid();
+  if (S.activeTab === 'saved') renderSaved();
+}
+function removeSaved(key) {
+  delete S.saved[key];
+  persistSaved(); updateSavedBadge();
+  renderSaved(); renderPre(); renderBid();
+}
+function updateMemo(key, val) {
+  if (S.saved[key]) { S.saved[key].memo = val; persistSaved(); }
+}
+function savedDocLinks(source, d) {
+  if (source === 'pre') {
+    return [1,2,3,4,5].filter(n => d['specDocFileUrl'+n])
+      .map(n => `<a href="${d['specDocFileUrl'+n]}" target="_blank" rel="noopener" class="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 rounded px-2 py-1 whitespace-nowrap">📄 규격${n}</a>`).join('');
+  }
+  let out = d.bidNtceDtlUrl
+    ? `<a href="${d.bidNtceDtlUrl}" target="_blank" rel="noopener" class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 whitespace-nowrap">🔗 공고페이지</a>` : '';
+  out += [1,2,3,4,5,6,7,8,9,10].filter(n => d['ntceSpecDocUrl'+n]).map(n => {
+    const fname = d['ntceSpecFileNm'+n] || ('문서'+n);
+    const label = fname.length > 10 ? fname.slice(0,9)+'…' : fname;
+    return `<a href="${d['ntceSpecDocUrl'+n]}" target="_blank" rel="noopener" title="${fname}" class="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 rounded px-2 py-1 whitespace-nowrap">📄 ${label}</a>`;
+  }).join('');
+  return out;
+}
+function renderSaved() {
+  const c = document.getElementById('savedList');
+  if (!c) return;
+  const entries = Object.entries(S.saved).sort((a,b) => (b[1].savedAt||'').localeCompare(a[1].savedAt||''));
+  updateSavedBadge();
+  if (!entries.length) {
+    c.innerHTML = '<p class="text-center py-12 text-gray-400 text-sm">보관한 사업이 없습니다.<br>사전규격·입찰공고 검색 결과에서 ☆를 눌러 담아보세요.</p>';
+    return;
+  }
+  c.innerHTML = entries.map(([key, rec]) => {
+    const d = rec.item, src = rec.source, isPre = src === 'pre';
+    const title = isPre ? (d.prdctClsfcNoNm||'-') : (d.bidNtceNm||'-');
+    const agency = isPre ? (d.orderInsttNm||'-') : (d.ntceInsttNm||'-');
+    const deadline = isPre ? d.opninRgstClseDt : d.bidClseDt;
+    const badge = isPre
+      ? '<span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">📌 사전규격</span>'
+      : '<span class="text-xs bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">📢 입찰공고</span>';
+    const docs = savedDocLinks(src, d);
+    const memo = (rec.memo || '').replace(/"/g, '&quot;');
+    const k = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `
+    <div class="p-3">
+      <div class="flex justify-between items-start gap-2 mb-1">
+        <div class="flex items-center gap-2 flex-wrap">${badge}<span class="text-xs text-gray-400">${fmtDt(deadline)} 마감</span></div>
+        <button onclick="removeSaved('${k}')" title="보관 해제" class="text-amber-400 hover:text-red-500 text-lg leading-none flex-shrink-0">★</button>
+      </div>
+      <p class="font-semibold text-gray-800 text-sm leading-snug mb-1">${title}</p>
+      <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mb-2">
+        <span>🏢 ${agency}</span>
+        <span class="font-bold ${isPre ? 'text-indigo-600' : 'text-emerald-600'}">💰 ${fmtAmt(d.asignBdgtAmt)}</span>
+      </div>
+      ${docs ? `<div class="flex flex-wrap gap-1 mb-2">${docs}</div>` : ''}
+      <input type="text" value="${memo}" placeholder="메모 (예: 관심 / 검토중 / 제외)"
+        onchange="updateMemo('${k}', this.value)"
+        class="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:border-amber-400 focus:outline-none">
+    </div>`;
+  }).join('');
+}
+function exportSaved() {
+  const blob = new Blob([JSON.stringify(S.saved, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '나라장터_보관함_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function importSaved(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d || typeof d !== 'object' || Array.isArray(d)) throw 0;
+      S.saved = { ...S.saved, ...d };
+      persistSaved(); updateSavedBadge(); renderSaved();
+      alert('보관함 불러오기 완료: 총 ' + Object.keys(S.saved).length + '건');
+    } catch (e) { alert('올바른 보관함 파일이 아닙니다.'); }
+    input.value = '';
+  };
+  r.readAsText(f);
+}
+// ────────────────────────────────────────────────────
+
 async function doSearch() {
   const sd = document.getElementById('startDate').value.replace(/-/g,'');
   const ed = document.getElementById('endDate').value.replace(/-/g,'');
@@ -701,7 +844,7 @@ function renderPre() {
     return `
     <tr class="hover:bg-indigo-50/40 transition">
       <td class="px-3 py-3 text-xs text-gray-400">${i+1}</td>
-      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${d.prdctClsfcNoNm||'-'}</div></td>
+      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${starHTML('pre',i,d)}${d.prdctClsfcNoNm||'-'}</div></td>
       <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">${d.orderInsttNm||'-'}</td>
       <td class="px-3 py-3 text-right text-sm font-bold text-indigo-600 whitespace-nowrap">${fmtAmt(d.asignBdgtAmt)}</td>
       <td class="px-3 py-3 text-center text-xs text-gray-500 whitespace-nowrap">${fmtDt(d.opninRgstClseDt)}</td>
@@ -733,7 +876,7 @@ function renderBid() {
     return `
     <tr class="hover:bg-emerald-50/40 transition">
       <td class="px-3 py-3 text-xs text-gray-400">${i+1}</td>
-      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${d.bidNtceNm||'-'}</div></td>
+      <td class="px-3 py-3"><div class="font-medium text-gray-800 text-sm leading-snug">${starHTML('bid',i,d)}${d.bidNtceNm||'-'}</div></td>
       <td class="px-3 py-3 text-xs text-gray-500 break-keep">${d.ntceInsttNm||'-'}</td>
       <td class="px-3 py-3 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">${fmtAmt(d.asignBdgtAmt)}</td>
       <td class="px-3 py-3 text-center text-xs text-gray-500 whitespace-nowrap">${fmtDt(d.bidClseDt)}</td>
@@ -751,15 +894,17 @@ function renderBid() {
 function switchTab(tab) {
   S.activeTab = tab;
   saveSession();
-  const isPre = tab === 'pre';
-  document.getElementById('panelPre').classList.toggle('hidden', !isPre);
-  document.getElementById('panelBid').classList.toggle('hidden',  isPre);
-  document.getElementById('tabPreBtn').className = isPre
-    ? 'flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600'
-    : 'flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600';
-  document.getElementById('tabBidBtn').className = !isPre
-    ? 'flex-1 py-3 text-sm font-semibold text-emerald-600 border-b-2 border-emerald-500'
-    : 'flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600';
+  const off = 'flex-1 py-3 text-sm font-semibold text-gray-400 hover:text-gray-600';
+  document.getElementById('panelPre').classList.toggle('hidden', tab !== 'pre');
+  document.getElementById('panelBid').classList.toggle('hidden', tab !== 'bid');
+  document.getElementById('panelSaved').classList.toggle('hidden', tab !== 'saved');
+  document.getElementById('tabPreBtn').className   = tab === 'pre'
+    ? 'flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600' : off;
+  document.getElementById('tabBidBtn').className   = tab === 'bid'
+    ? 'flex-1 py-3 text-sm font-semibold text-emerald-600 border-b-2 border-emerald-500' : off;
+  document.getElementById('tabSavedBtn').className = tab === 'saved'
+    ? 'flex-1 py-3 text-sm font-semibold text-amber-600 border-b-2 border-amber-500' : off;
+  if (tab === 'saved') renderSaved();
 }
 
 function doSort(type, key, thEl) {
