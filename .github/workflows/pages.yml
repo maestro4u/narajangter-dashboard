@@ -23,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Write version file (배포마다 커밋 SHA 기록 → 클라이언트 새버전 감지용)
+        run: echo "{\"v\":\"${{ github.sha }}\"}" > static/version.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: static
