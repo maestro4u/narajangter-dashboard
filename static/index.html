@@ -154,8 +154,12 @@
         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition text-sm">
         🔍 검색 실행
       </button>
-      <button onclick="resetSettings()"
-        class="w-full mt-2 text-xs text-gray-400 hover:text-red-500 py-1">↺ 필터 설정 초기화</button>
+      <div class="flex gap-2 mt-2">
+        <button onclick="shareFilter()"
+          class="flex-1 text-xs text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded py-1.5">🔗 필터 공유</button>
+        <button onclick="resetSettings()"
+          class="flex-1 text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded py-1.5">↺ 초기화</button>
+      </div>
     </div>
   </aside>
 
@@ -526,6 +530,7 @@ function init() {
   setDays(3);
   const hasSaved = loadSettings();
   if (!hasSaved) S.activeRegions = new Set(S.regions);
+  applySharedFilter();   // ?f= 공유링크로 접속 시 필터 덮어쓰기
   renderRegions(); renderInclude(); renderExclude();
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => doSort(th.dataset.type, th.dataset.key, th));
@@ -958,7 +963,41 @@ function doSort(type, key, thEl) {
 function resetSettings() {
   if (!confirm('필터 조건(지역·키워드·예산)을 기본값으로 되돌릴까요?\n※ 내 보관함은 그대로 유지됩니다.')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-  location.reload();
+  const u = new URL(location.href);
+  u.searchParams.delete('f');   // 공유링크 파라미터 제거(안 지우면 새로고침 시 재적용)
+  location.href = u.toString();
+}
+
+// ── 필터 공유: 현재 필터를 링크로 만들어 복사 ──
+function shareFilter() {
+  const cfg = { r: S.regions, a: [...S.activeRegions], i: S.include, e: S.exclude, b: budgetRaw() };
+  const enc = btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g, '-').replace(/\//g, '_');
+  const url = location.origin + location.pathname + '?f=' + enc;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(
+      () => alert('✅ 필터 공유 링크를 복사했습니다.\n카톡·메일에 붙여넣기(Ctrl+V)로 전달하세요.\n받는 사람이 링크를 열면 이 필터가 그대로 적용됩니다.'),
+      () => prompt('아래 링크를 복사해 전달하세요:', url)
+    );
+  } else {
+    prompt('아래 링크를 복사해 전달하세요:', url);
+  }
+}
+
+// ── 공유 링크(?f=)로 접속 시 필터 적용 ──
+function applySharedFilter() {
+  const raw = new URLSearchParams(location.search).get('f');
+  if (!raw) return false;
+  try {
+    const c = JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g, '+').replace(/_/g, '/')))));
+    if (Array.isArray(c.r)) S.regions = c.r;
+    if (Array.isArray(c.a)) S.activeRegions = new Set(c.a);
+    if (Array.isArray(c.i)) S.include = c.i;
+    if (Array.isArray(c.e)) S.exclude = c.e;
+    if (typeof c.b === 'number') document.getElementById('minBudget').value = c.b.toLocaleString('en-US');
+    updateBudgetLabel();
+    saveSettings();
+    return true;
+  } catch (e) { return false; }
 }
 
 // ── 새 버전 자동 감지 → 새로고침 배너 ──
